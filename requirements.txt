@@ -1,0 +1,2 @@
+# Minimal dependencies for CLI regex log analyzer
+pandas==2.2.3
