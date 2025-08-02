@@ -195,18 +195,7 @@ def parse_dec_file(in_path, out_path):
             out_file.write(f"{decoded}\n")
 
 
-def parse_dec_file_to_csv(in_path, out_path):
-    """
-    Decode and clean all entries in a log file and export them to a CSV file.
-
-    Each parsed line is decoded, bot-filtered, and converted into structured tabular data.
-    Adds a line number ('no') to each entry for traceability.
-    Time fields are parsed as datetime objects in UTC.
-
-    Args:
-        in_path (str): Path to the input raw log file.
-        out_path (str): Path to the resulting CSV file.
-    """
+def parse_dec_file_to_dataframe(in_path):
     with open(in_path, 'r', encoding='utf-8', errors='replace') as in_file:
         
         records = []
@@ -226,6 +215,23 @@ def parse_dec_file_to_csv(in_path, out_path):
     df['time'] = pd.to_datetime(df['time'], format='%d/%b/%Y:%H:%M:%S %z', errors='coerce', utc=True)
     df['status'] = df['status'].astype(int)
     df['size'] = df['size'].astype(int)
+    
+    return df
+
+
+def parse_dec_file_to_csv(in_path, out_path):
+    """
+    Decode and clean all entries in a log file and export them to a CSV file.
+
+    Each parsed line is decoded, bot-filtered, and converted into structured tabular data.
+    Adds a line number ('no') to each entry for traceability.
+    Time fields are parsed as datetime objects in UTC.
+
+    Args:
+        in_path (str): Path to the input raw log file.
+        out_path (str): Path to the resulting CSV file.
+    """
+    df = parse_dec_file_to_dataframe(in_path)
     df.to_csv(out_path, index=False)
 
 

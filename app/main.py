@@ -2,96 +2,99 @@ import os
 import re
 import sys
 import json
+import torch
 import argparse
+import numpy as np
 import pandas as pd
-from app.decoder import parse_dec_file_to_csv
-
-# def load_keywords(file_path):
-#     """
-#     Load keyword rules from a JSON file.
-
-#     The JSON file must map category names (e.g., 'sql_injection') to strings of space-separated keywords.
-#     This function splits each string into a list of keywords.
-
-#     Args:
-#         file_path (str): Path to the JSON file containing keyword rules.
-
-#     Returns:
-#         dict: A dictionary mapping rule categories to lists of keywords.
-#     """
-#     with open(file_path, 'r', encoding='utf-8') as f:
-#         keywords = json.load(f)
-
-#     for key in keywords:
-#         keywords[key] = keywords[key].split()
-
-#     return keywords
+import matplotlib.pyplot as plt
+from urllib.parse import urlparse, unquote
+from transformers import BertTokenizer, BertModel
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+from app.decoder import parse_dec_file_to_dataframe
+from pprint import pprint
 
 
-# def counting(url, keywords, baseline):
-#     """
-#     Count keyword occurrences in a URL and assign a label based on threshold.
-
-#     For each rule category, this function counts the number of matching keywords found in the URL.
-#     If the highest count exceeds the baseline, the request is labeled as an attack of that type;
-#     otherwise, it's labeled as 'benign'.
-
-#     Args:
-#         url (str): The URL string to be analyzed.
-#         keywords (dict): Dictionary mapping categories to lists of keywords.
-#         baseline (int): Minimum keyword matches required to consider as an attack.
-
-#     Returns:
-#         pd.Series: A series containing:
-#             - Binary label (0 = benign, 1 = attack)
-#             - Predicted attack type (or 'benign')
-#             - Number of matched keywords
-#     """
-#     scores = {}
-#     for key, words in keywords.items():
-#         score = 0
-#         for word in words:
-#             if word in re.split(r'\W+', url):
-#                 score += 1
-#         scores[key] = score
-        
-#     max_score = max(scores, key=scores.get)
-#     if scores[max_score] < baseline:
-#         return pd.Series([0, 'benign', scores[max_score]])
-#     else:
-#         return pd.Series([1, max_score, scores[max_score]])
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
 
 
-# def inspect(in_path, rules_path, out_path, baseline):
-#     """
-#     Analyze decoded NGINX logs and label them using keyword-based heuristics.
+# Step 1: Get Unique URLs
+def url_for_training(df):
+    result = df['url'].unique()
+    result = [re.sub(r'\d+', '<NUM>', url) for url in result]
+    result = set(result)   
+    return list(result)
 
-#     Applies rule-based classification to URLs in the decoded CSV file and writes
-#     the result with predictions to a new CSV file.
 
-#     Args:
-#         in_path (str): Path to the decoded log CSV file.
-#         rules_path (str): Path to the keyword rule JSON file.
-#         out_path (str): Path to the output labeled CSV file.
-#         baseline (int): Minimum keyword occurrence threshold for attack classification.
-#     """
-#     df = pd.read_csv(in_path, parse_dates=['time'], encoding='utf-8')
-#     print(f"✅ Loaded {len(df)} rows from {in_path}")
+# Step 2: Clean and tokenize URLs
+def tokenize_url(url):
+    parsed = urlparse(url)
+    path = unquote(parsed.path)
+    query = unquote(parsed.query)
 
-#     rules = load_keywords(rules_path)
-#     print(f"✅ Loaded {len(rules)} rules from {rules_path}")
+    # Extended the regex to include (), [], <>
+    delimiters = r"[\/\-\_\=\&\?\.\+\(\)\[\]\<\>\{\}]"
+    path_tokens = re.split(delimiters, path.strip("/"))
+    query_tokens = re.split(delimiters, query)
 
-#     df[['pred_label', 'pred_type', 'score']] = df['url'].apply(lambda url: counting(url, rules, baseline))
-#     df.to_csv(out_path, index=False)    
-#     print(f"✅ Log file successfully labeled to {out_path}")
+    tokens = [tok for tok in path_tokens + query_tokens if tok]
+    return tokens
+
+
+# Step 3: Get BERT embeddings
+def get_url_embedding(text):
+    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+    model = BertModel.from_pretrained("bert-base-uncased")
+    model = BertModel.from_pretrained("bert-base-uncased").to(device)
+    model.eval()
+
+    inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True).to(device)
+    with torch.no_grad():
+        outputs = model(**inputs)
+    return outputs.last_hidden_state.mean(dim=1).squeeze().cpu().numpy()  # back to CPU
+
+
+def clustering(df, out_path, n_clusters):
+    train_url_list = url_for_training(df)
+    pprint(train_url_list)
+    print(f"✅ train_url_list {len(train_url_list)}")
+
+    tokenized_urls = [" ".join(tokenize_url(url)) for url in train_url_list]
+    pprint(tokenized_urls)
+    print(f"✅ tokenized_urls {len(tokenized_urls)}")
+
+    embeddings = np.array([get_url_embedding(url) for url in tokenized_urls])
+    # Step 4: KMeans clustering
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+    labels = kmeans.fit_predict(embeddings)
+
+    # Step 5: Print Clustered URLs
+    clustered_urls = {i: [] for i in range(n_clusters)}
+    for idx, label in enumerate(labels):
+        clustered_urls[label].append(train_url_list[idx])
+
+    with open("clustered_urls.txt", "w") as f:
+        for cluster, urls in clustered_urls.items():
+            f.write(f"\nCluster {cluster}:\n")
+            for url in urls:
+                f.write(f"  {url}\n")
+
+    # Step 6: Save clustered URLs to CSV
+    df_label = pd.DataFrame({
+        "masked": train_url_list,
+        "cluster": labels
+    })
+    df_label = df_label.sort_values(by='cluster')
+    df_label.to_csv(out_path, index=False, encoding="utf-8")
+
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="NGINX log labeler.")
     parser.add_argument("in_file", help="NGINX log file")
-    # parser.add_argument("rules_file", help="The rule file")
     parser.add_argument("out_file", help="The labeled NGINX csv file")
-    parser.add_argument("--baseline", type=int, default=3, help="Minimal word occurrence to be classfied as an attack.")
+    parser.add_argument("-n", type=int, default=10, help="Number of cluster.")
 
     # Parse the arguments
     args = parser.parse_args()
@@ -100,14 +103,12 @@ if __name__ == "__main__":
         print(f"❌ File not found: '{args.in_file}'")
         sys.exit(1)
 
-    # if not os.path.exists(args.rules_file):
-    #     print(f"❌ Rule file not found: '{args.rules_file}'")
-    #     sys.exit(1)
-    
     out_dir = os.path.dirname(args.out_file)
     if out_dir and not os.path.exists(out_dir):
         print(f"❌ Output directory is not found: '{out_dir}'")
         sys.exit(1)
     
-    parse_dec_file_to_csv(args.in_file, args.out_file)
-    # inspect(args.out_file, args.rules_file, args.out_file, args.baseline)
+    df = parse_dec_file_to_dataframe(args.in_file)
+    print(f"✅ Loaded {len(df)} rows from {args.in_file}")
+
+    clustering(df, args.out_file, args.n)
