@@ -36,13 +36,21 @@ The tool is designed to help **identify patterns, group similar URLs, and detect
 mlwl/
 │
 ├── app/
-│   ├── bot.py         # Utility to filter bot
-│   ├── decoder.py     # Utility to parse decoded log files into DataFrame
-│   ├── main.py        # Main CLI script for clustering URLs
+│   ├── bot.py         # Utility functions to filter out known bots from web server logs
+│   ├── decoder.py     # Module to parse decoded NGINX log files into a structured Pandas DataFrame
+│   └── main.py        # Main entry point (CLI tool) for reading logs, extracting URLs, generating BERT embeddings, and clustering results
 │
-├── inputs/            # Example input log files
-├── outputs/           # Output directory for clustering results
-└── README.md          # Project documentation
+├── inputs/            # Directory containing example input log files for testing
+│   └── sample.log     # Example NGINX access log file
+│
+├── outputs/           # Directory where the clustering results (CSV and TXT files) are saved
+│
+├── .gitignore         # Specifies files and folders to be ignored by Git version control
+├── Dockerfile         # Docker build file to containerize the application
+├── LICENSE            # Project license information
+├── README.md          # Documentation with setup, usage, and project details
+└── requirements.txt   # List of Python dependencies required to run the application
+
 ```
 
 ---
