@@ -36,8 +36,9 @@ The tool is designed to help **identify patterns, group similar URLs, and detect
 mlwl/
 │
 ├── app/
-│   ├── main.py        # Main CLI script for clustering URLs
+│   ├── bot.py         # Utility to filter bot
 │   ├── decoder.py     # Utility to parse decoded log files into DataFrame
+│   ├── main.py        # Main CLI script for clustering URLs
 │
 ├── inputs/            # Example input log files
 ├── outputs/           # Output directory for clustering results
