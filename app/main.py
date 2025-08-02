@@ -23,7 +23,13 @@ MODEL.eval()
 
 def extract_unique_urls(df):
     """
-    Extract unique URLs from the dataframe and mask numeric values with <NUM>.
+    Extract unique URLs from the dataframe and mask numeric values.
+
+    Args:
+        df (pd.DataFrame): Dataframe containing a 'url' column with log URLs.
+
+    Returns:
+        list: Unique URLs with numeric sequences replaced by <NUM>.
     """
     result = df['url'].unique()
     result = [re.sub(r'\d+', '<NUM>', url) for url in result]
@@ -31,7 +37,13 @@ def extract_unique_urls(df):
 
 def split_url_tokens(url):
     """
-    Tokenize a URL by splitting on common delimiters (path and query string).
+    Tokenize a URL by splitting its path and query string.
+
+    Args:
+        url (str): A URL string to tokenize.
+
+    Returns:
+        list: List of token strings extracted from the URL.
     """
     parsed = urlparse(url)
     path = unquote(parsed.path)
@@ -42,7 +54,14 @@ def split_url_tokens(url):
 
 def generate_url_embeddings(url_list, batch_size=16):
     """
-    Generate BERT embeddings for a list of preprocessed URLs using batched inference.
+    Generate BERT embeddings for a list of URLs.
+
+    Args:
+        url_list (list): List of preprocessed URL strings.
+        batch_size (int, optional): Number of URLs to process in each batch. Defaults to 16.
+
+    Returns:
+        np.ndarray: Array of embedding vectors for each URL.
     """
     embeddings = []
     for i in range(0, len(url_list), batch_size):
@@ -57,32 +76,35 @@ def generate_url_embeddings(url_list, batch_size=16):
 
 def cluster_urls_from_log(df, out_path, n_clusters):
     """
-    Perform clustering on URLs using BERT embeddings and KMeans.
-    Saves results in both text and CSV format.
+    Cluster URLs from log data using BERT embeddings and KMeans.
+
+    Args:
+        df (pd.DataFrame): Dataframe containing URLs for clustering.
+        out_path (str): Path for saving output CSV and TXT results.
+        n_clusters (int): Number of clusters to create with KMeans.
+
+    Returns:
+        None
     """
     # Step 1: Extract unique URLs
     unique_urls = extract_unique_urls(df)
-    # Print the unique_urls for debuging purpose
     print(f"✅ Output of: unique_urls")
     pprint(unique_urls)
 
     # Step 2: Tokenize each URL into text
     tokenized_urls = [" ".join(split_url_tokens(url)) for url in unique_urls]
-    # Print the tokenized_urls for debuging purpose
     print(f"✅ Output of: tokenized_urls")
     pprint(tokenized_urls)
 
     # Step 3: Convert URLs to embeddings
     embeddings = generate_url_embeddings(tokenized_urls)
     embeddings = normalize(embeddings)
-    # Print the embeddings for debuging purpose
     print(f"✅ Output of: embeddings")
     pprint(embeddings)
 
     # Step 4: Cluster embeddings
     kmeans = KMeans(n_clusters=n_clusters, random_state=42)
     labels = kmeans.fit_predict(embeddings)
-    # Print the labels for debuging purpose
     print(f"✅ Output of: labels")
     pprint(labels)
 
@@ -105,7 +127,7 @@ def cluster_urls_from_log(df, out_path, n_clusters):
 
 if __name__ == "__main__":
     """
-    CLI for NGINX log clustering tool.
+    CLI entry point for NGINX log clustering tool.
 
     Example:
         python main.py inputs/sample.log outputs/clusters.csv -n 8
