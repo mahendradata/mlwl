@@ -1,11 +1,21 @@
 import argparse
 import pandas as pd
 import os
+import re
+from app.parser import parse_log
+
+log_pattern = re.compile(
+    r'(?P<ip>\S+) - - \[(?P<time>[^\]]+)\] '
+    r'"(?P<method>\S+) (?P<url>\S+) (?P<protocol>[^"]+)" '
+    r'(?P<status>\d+) (?P<size>\d+) '
+    r'"(?P<referrer>[^"]*)" "(?P<user_agent>[^"]*)" "(?P<extra>[^"]*)"'
+)
 
 def parse_log_line(line):
-    # Simple parser: splits line by spaces
-    parts = line.strip().split()
-    return parts
+    match = log_pattern.match(line)
+    if match:
+        return match.groupdict()
+    return None
 
 def main():
     parser = argparse.ArgumentParser(description="Parse web server log file to CSV")
@@ -17,21 +27,15 @@ def main():
         print(f"Error: Input file {args.input_file} not found.")
         exit(1)
 
-    parsed_data = []
-    with open(args.input_file, 'r') as f:
-        for line in f:
-            if line.strip():
-                parsed_data.append(parse_log_line(line))
+    df = parse_log(args.input_file)
 
-    # Create DataFrame, dynamically handle column count
-    max_cols = max(len(row) for row in parsed_data)
-    col_names = [f'col{i+1}' for i in range(max_cols)]
-    df = pd.DataFrame(parsed_data, columns=col_names)
+    # Ensure output directory exists (create even if empty string)
+    output_dir = os.path.dirname(args.output_file)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
 
-    # Write DataFrame to output file
-    os.makedirs(os.path.dirname(args.output_file), exist_ok=True)
     df.to_csv(args.output_file, index=False)
-    print(f"Parsed log saved to {args.output_file}")
+    print(f"[INFO] Parsed log saved to {args.output_file}")
 
 if __name__ == "__main__":
     main()
